@@ -2,192 +2,243 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>智慧养基宝 - AI识别版</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>复利养基宝 Pro - 资产自动滚存</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
     <style>
-        .up { color: #f87171; } .down { color: #4ade80; }
-        .blur-val { filter: blur(5px); }
+        .up { color: #ef4444; }
+        .down { color: #22c55e; }
+        .bg-up { background-color: #fef2f2; }
+        @keyframes flash { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
+        .updating { animation: flash 1.5s infinite; }
     </style>
 </head>
-<body class="bg-gray-100 min-h-screen pb-24">
+<body class="bg-gray-50 pb-20">
 
-<div id="app" class="max-w-md mx-auto">
-    <div class="bg-blue-600 p-6 rounded-b-[2rem] shadow-lg text-white">
-        <div class="flex justify-between items-center mb-4">
-            <span class="text-sm opacity-80" id="date-label">载入中...</span>
-            <div class="flex gap-3">
-                <button onclick="togglePrivacy()" class="text-xl">👁️</button>
-                <button onclick="location.reload()" class="text-xl">🔄</button>
+<div id="app" class="max-w-md mx-auto p-4">
+    <div class="bg-slate-900 rounded-3xl p-6 shadow-2xl mb-6 text-white relative overflow-hidden">
+        <div class="relative z-10">
+            <p class="text-slate-400 text-xs flex items-center gap-1">
+                今日预估盈亏 (元) 
+                <span id="date-label" class="bg-slate-700 px-2 py-0.5 rounded text-[10px]"></span>
+            </p>
+            <h2 id="total-profit" class="text-3xl font-black my-2">0.00</h2>
+            <div class="flex justify-between items-end mt-4">
+                <div>
+                    <p class="text-slate-400 text-[10px]">当前总资产 (预估)</p>
+                    <p id="total-assets" class="text-lg font-bold text-blue-400">¥0.00</p>
+                </div>
+                <div class="text-right text-[10px] text-slate-500">
+                    自动滚存已开启<br>数据每分钟刷新
+                </div>
             </div>
         </div>
-        <p class="text-xs opacity-70">预估总盈亏 (元)</p>
-        <h2 id="total-profit" class="text-4xl font-black my-1">0.00</h2>
-        <div class="flex justify-between mt-4 text-xs bg-white/10 p-2 rounded-lg">
-            <span>总资产: <b id="total-assets" class="money-val">¥0.00</b></span>
-            <span id="update-status">正在获取行情...</span>
-        </div>
     </div>
 
-    <div class="flex gap-2 p-4 -mt-4">
-        <label class="flex-1 bg-white p-3 rounded-xl shadow-sm text-center cursor-pointer border-2 border-dashed border-blue-200">
-            <span class="text-sm font-bold text-blue-600">📸 识别截图添加</span>
-            <input type="file" accept="image/*" onchange="handleOCR(this)" class="hidden">
-        </label>
-        <button onclick="showManualAdd()" class="bg-white px-6 rounded-xl shadow-sm text-sm font-bold text-gray-600">手动</button>
+    <div class="bg-white p-4 rounded-2xl shadow-sm mb-6 border border-gray-100">
+        <div class="flex gap-2 mb-3">
+            <input type="text" id="fundCodeInput" placeholder="代码(6位)" class="w-1/3 px-3 py-2 bg-gray-50 border-none rounded-xl text-sm focus:ring-2 focus:ring-blue-500">
+            <input type="number" id="fundAmountInput" placeholder="当前持有本金" class="w-2/3 px-3 py-2 bg-gray-50 border-none rounded-xl text-sm focus:ring-2 focus:ring-blue-500">
+        </div>
+        <button onclick="addFund()" class="w-full bg-blue-600 text-white py-2.5 rounded-xl font-bold text-sm shadow-lg shadow-blue-200 active:scale-95 transition">加入我的持仓</button>
     </div>
 
-    <div id="ocr-loading" class="hidden mx-4 mb-4 p-3 bg-blue-50 text-blue-600 text-xs rounded-lg text-center">
-        正在解析图片中的基金数据，请稍后...
-    </div>
-
-    <div id="fund-list" class="px-4 space-y-3">
+    <div id="fund-list" class="space-y-3">
         </div>
-</div>
 
-<div id="modal" class="hidden fixed inset-0 bg-black/50 flex items-center justify-center p-6 z-50">
-    <div class="bg-white w-full rounded-2xl p-6">
-        <h3 class="font-bold mb-4">添加/修改持仓</h3>
-        <input type="text" id="fCode" placeholder="6位基金代码" class="w-full border p-3 rounded-lg mb-3">
-        <input type="number" id="fAmount" placeholder="持有金额" class="w-full border p-3 rounded-lg mb-4">
-        <div class="flex gap-2">
-            <button onclick="closeModal()" class="flex-1 py-3 text-gray-500">取消</button>
-            <button onclick="saveManual()" class="flex-1 py-3 bg-blue-600 text-white rounded-lg">确定</button>
-        </div>
+    <div class="mt-8 flex justify-center gap-4">
+        <button onclick="exportData()" class="text-xs text-gray-400 underline">备份数据</button>
+        <button onclick="importData()" class="text-xs text-gray-400 underline">恢复持仓</button>
+        <button onclick="clearAll()" class="text-xs text-red-300 underline">清空重置</button>
     </div>
 </div>
 
 <script>
-    let myPortfolio = JSON.parse(localStorage.getItem('myPortfolio_v3')) || [];
-    let isPrivacy = false;
+    // --- 1. 全局状态初始化 ---
+    let myPortfolio = [];
+    const todayStr = new Date().toLocaleDateString();
 
-    // --- OCR 识别逻辑 ---
-    async function handleOCR(input) {
-        if (!input.files[0]) return;
-        const loader = document.getElementById('ocr-loading');
-        loader.classList.remove('hidden');
-        
+    // --- 2. 数据加载与容错 (解决报错的核心) ---
+    function initData() {
         try {
-            const result = await Tesseract.recognize(input.files[0], 'chi_sim+eng');
-            const text = result.data.text;
-            console.log("识别结果:", text);
-            
-            // 匹配逻辑：找 6 位数字代码 或 常见的基金名称关键字
-            // 针对你的图片，尝试匹配“买入”后的金额
-            const amountMatches = text.match(/\d+\.\d{2}/g); // 匹配金额如 500.00
-            
-            // 这里因为天天基金接口需要代码，建议识别后弹窗让用户确认
-            alert("识别完成！检测到可能金额: " + (amountMatches ? amountMatches[0] : "未识别到"));
-            // 实际应用中，由于OCR识别中文基金名转代码需要数据库，
-            // 建议这里跳转到手动输入，并自动填入识别到的金额
-            showManualAdd('', amountMatches ? amountMatches[0] : '');
+            const rawData = localStorage.getItem('myPortfolio_v2');
+            // 严谨校验：非空且不是HTML标签开头
+            if (rawData && !rawData.trim().startsWith('<')) {
+                myPortfolio = JSON.parse(rawData);
+            } else {
+                myPortfolio = [];
+            }
         } catch (e) {
-            alert("识别失败，请手动输入");
-        } finally {
-            loader.classList.add('hidden');
+            console.warn("数据异常，已重置为空列表");
+            myPortfolio = [];
         }
+        checkAndRolling();
     }
 
-    // --- 核心业务逻辑 ---
+    // --- 3. 复利结算逻辑 ---
+    function checkAndRolling() {
+        let hasChanged = false;
+        myPortfolio.forEach(item => {
+            // 如果记录的日期不是今天，说明发生了跨天，执行滚存
+            if (item.lastUpdateDate && item.lastUpdateDate !== todayStr) {
+                if (item.yesterdayFinalAmount) {
+                    item.amount = item.yesterdayFinalAmount; // 昨天的钱变成今天的本金
+                    hasChanged = true;
+                }
+            }
+            item.lastUpdateDate = todayStr;
+        });
+        if (hasChanged) saveToLocal();
+    }
+
+    // --- 4. 接口回调函数 ---
     window.jsonpgz = function(data) {
         const item = myPortfolio.find(f => f.code === data.fundcode);
         if (!item) return;
 
         const ratio = parseFloat(data.gszzl);
-        item.lastProfit = item.amount * (ratio / 100);
-        item.currentTotal = item.amount + item.lastProfit;
-        item.name = data.name;
+        const profit = (item.amount * (ratio / 100)).toFixed(2);
+        
+        item.currentTotal = item.amount + parseFloat(profit);
+        item.yesterdayFinalAmount = item.currentTotal; 
+        item.lastProfit = parseFloat(profit);
+        item.fundName = data.name;
+        item.gsz = data.gsz;
+        item.gszzl = data.gszzl;
 
-        renderList();
-        updateHeader();
+        updateUI();
     };
 
-    function renderList() {
-        const listBody = document.getElementById('fund-list');
-        listBody.innerHTML = myPortfolio.map(item => `
-            <div class="bg-white p-4 rounded-2xl shadow-sm flex justify-between items-center border border-gray-50">
-                <div onclick="showManualAdd('${item.code}', '${item.amount}')" class="flex-1">
-                    <h4 class="font-bold text-gray-800 text-sm truncate w-40">${item.name || '加载中...'}</h4>
-                    <p class="text-[10px] text-gray-400">本金: ¥<span class="money-val">${item.amount.toLocaleString()}</span></p>
+    // --- 5. UI 渲染渲染逻辑 ---
+    function updateUI() {
+        const listContainer = document.getElementById('fund-list');
+        let totalProfit = 0;
+        let totalAssets = 0;
+
+        // 只有在有数据时才清空，避免闪烁
+        listContainer.innerHTML = '';
+
+        myPortfolio.forEach(item => {
+            const isUp = (item.lastProfit || 0) >= 0;
+            totalProfit += (item.lastProfit || 0);
+            totalAssets += (item.currentTotal || item.amount);
+
+            const card = document.createElement('div');
+            card.className = "bg-white p-4 rounded-2xl shadow-sm flex justify-between items-center border border-gray-100";
+            card.innerHTML = `
+                <div class="flex-1">
+                    <h3 class="font-bold text-gray-800 text-sm truncate w-32">${item.fundName || '加载中...'}</h3>
+                    <p class="text-[10px] text-gray-400">起步本金: ¥${item.amount.toLocaleString()}</p>
                 </div>
-                <div class="text-right">
-                    <p class="text-lg font-black ${item.lastProfit >= 0 ? 'up' : 'down'}">
-                        <span class="money-val">${item.lastProfit >= 0 ? '+' : ''}${item.lastProfit.toFixed(2)}</span>
+                <div class="text-right mr-4">
+                    <p class="text-md font-black ${isUp ? 'text-red-500' : 'text-green-500'}">
+                        ${isUp ? '+' : ''}${(item.lastProfit || 0).toFixed(2)}
                     </p>
-                    <button onclick="removeFund('${item.code}')" class="text-[10px] text-gray-300">删除持仓</button>
+                    <p class="text-[10px] text-gray-400">估值: ${item.gsz || '--'} (${item.gszzl || '0'}%)</p>
                 </div>
-            </div>
-        `).join('');
-        if(isPrivacy) applyPrivacyUI();
-    }
+                <button onclick="removeFund('${item.code}')" class="text-gray-300 hover:text-red-500 transition">×</button>
+            `;
+            listContainer.appendChild(card);
+        });
 
-    function updateHeader() {
-        const totalProfit = myPortfolio.reduce((s, f) => s + (f.lastProfit || 0), 0);
-        const totalAssets = myPortfolio.reduce((s, f) => s + (f.currentTotal || f.amount), 0);
+        // 更新顶部总览
+        const pEl = document.getElementById('total-profit');
+        pEl.innerText = (totalProfit >= 0 ? '+' : '') + totalProfit.toFixed(2);
+        pEl.className = `text-3xl font-black my-2 ${totalProfit >= 0 ? 'text-red-400' : 'text-green-400'}`;
         
-        const profitEl = document.getElementById('total-profit');
-        profitEl.innerText = (totalProfit >= 0 ? '+' : '') + totalProfit.toFixed(2);
-        profitEl.className = `text-4xl font-black my-1 ${totalProfit >= 0 ? 'text-white' : 'text-green-300'}`;
+        document.getElementById('total-assets').innerText = `¥${totalAssets.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
+        document.getElementById('date-label').innerText = todayStr;
+    }
+
+    // --- 6. 功能操作 ---
+    function fetchAll() {
+        if (myPortfolio.length === 0) {
+            document.getElementById('fund-list').innerHTML = '<div class="text-center text-gray-300 py-10 text-sm">暂无持仓，请添加</div>';
+            return;
+        }
+        myPortfolio.forEach(item => {
+            const script = document.createElement('script');
+            script.src = `https://fundgz.1234567.com.cn/js/${item.code}.js?rt=${Date.now()}`;
+            document.body.appendChild(script);
+        });
+    }
+
+    function addFund() {
+        const code = document.getElementById('fundCodeInput').value.trim();
+        const amount = parseFloat(document.getElementById('fundAmountInput').value);
         
-        document.getElementById('total-assets').innerText = `¥${totalAssets.toLocaleString(undefined, {minimumFractionDigits:2})}`;
-        document.getElementById('date-label').innerText = new Date().toLocaleDateString() + " 实时估值";
-        document.getElementById('update-status').innerText = "已更新 " + new Date().toLocaleTimeString();
-    }
-
-    // --- 交互功能 ---
-    function showManualAdd(code = '', amount = '') {
-        document.getElementById('fCode').value = code;
-        document.getElementById('fAmount').value = amount;
-        document.getElementById('modal').classList.remove('hidden');
-    }
-
-    function closeModal() { document.getElementById('modal').classList.add('hidden'); }
-
-    function saveManual() {
-        const code = document.getElementById('fCode').value;
-        const amount = parseFloat(document.getElementById('fAmount').value);
-        if(code && amount) {
-            const index = myPortfolio.findIndex(f => f.code === code);
-            if(index > -1) myPortfolio[index].amount = amount;
-            else myPortfolio.push({code, amount, lastProfit:0});
+        if (/^\d{6}$/.test(code) && !isNaN(amount)) {
+            // 防止重复添加
+            if (myPortfolio.some(f => f.code === code)) return alert("该基金已在列表中");
             
-            localStorage.setItem('myPortfolio_v3', JSON.stringify(myPortfolio));
-            closeModal();
-            refreshData();
+            myPortfolio.push({ 
+                code, 
+                amount, 
+                lastUpdateDate: todayStr, 
+                yesterdayFinalAmount: amount,
+                lastProfit: 0
+            });
+            saveToLocal();
+            fetchAll();
+            document.getElementById('fundCodeInput').value = '';
+            document.getElementById('fundAmountInput').value = '';
+        } else {
+            alert("请检查输入内容");
         }
     }
 
     function removeFund(code) {
-        myPortfolio = myPortfolio.filter(f => f.code !== code);
-        localStorage.setItem('myPortfolio_v3', JSON.stringify(myPortfolio));
-        renderList();
-        updateHeader();
+        if(confirm('确定删除该持仓吗？')) {
+            myPortfolio = myPortfolio.filter(f => f.code !== code);
+            saveToLocal();
+            updateUI();
+        }
     }
 
-    function togglePrivacy() {
-        isPrivacy = !isPrivacy;
-        applyPrivacyUI();
+    function saveToLocal() {
+        localStorage.setItem('myPortfolio_v2', JSON.stringify(myPortfolio));
     }
 
-    function applyPrivacyUI() {
-        const elements = document.querySelectorAll('.money-val');
-        elements.forEach(el => isPrivacy ? el.classList.add('blur-val') : el.classList.remove('blur-val'));
-        const totalProfit = document.getElementById('total-profit');
-        isPrivacy ? totalProfit.classList.add('blur-val') : totalProfit.classList.remove('blur-val');
+    // --- 7. 备份与恢复功能 ---
+    function exportData() {
+        if(myPortfolio.length === 0) return alert("暂无数据可备份");
+        const str = JSON.stringify(myPortfolio);
+        const el = document.createElement('textarea');
+        el.value = str;
+        document.body.appendChild(el);
+        el.select();
+        document.execCommand('copy');
+        document.body.removeChild(el);
+        alert("持仓数据已复制到剪贴板，请妥善保存至记事本！");
     }
 
-    function refreshData() {
-        myPortfolio.forEach(item => {
-            const s = document.createElement('script');
-            s.src = `https://fundgz.1234567.com.cn/js/${item.code}.js?rt=${Date.now()}`;
-            document.body.appendChild(s);
-        });
+    function importData() {
+        const str = prompt("请粘贴之前备份的 JSON 字符串:");
+        if (str) {
+            try {
+                const data = JSON.parse(str);
+                if (Array.isArray(data)) {
+                    myPortfolio = data;
+                    saveToLocal();
+                    location.reload();
+                }
+            } catch (e) {
+                alert("恢复失败，数据格式不正确！");
+            }
+        }
     }
 
-    // 每分钟自动刷新
-    setInterval(refreshData, 60000);
-    window.onload = refreshData;
+    function clearAll() {
+        if(confirm('清空所有持仓？此操作不可撤销')) {
+            localStorage.removeItem('myPortfolio_v2');
+            location.reload();
+        }
+    }
+
+    // --- 启动 ---
+    initData();
+    window.onload = fetchAll;
+    setInterval(fetchAll, 60000); // 每分钟自动刷新一次
 </script>
 </body>
 </html>
